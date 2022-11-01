@@ -31,23 +31,12 @@
 
 // Demo-self header files, usually to define some values for reusing
 #include "hello_doorbell_comm.h"
+#include "device_state.h"
 
-// Public header files of IoT aPaaS SDK
-#include "agora_iot_api.h"
-#include "agora_iot_call.h"
+static FILE *g_dump_audio = NULL;
+static FILE *g_dump_video = NULL;
 
-#if defined(CONFIG_SEND_H264_FRAMES)
-#include "h264_test_data_352x288.h"
-#elif defined(CONFIG_SEND_JPEG_FRAMES)
-#include "jpeg_test_data_640x480.h"
-#endif
-
-#if defined(CONFIG_SEND_PCM_DATA)
-#include "pcm_test_data_16k_5s.h"
-#elif defined(CONFIG_SEND_G711U_DATA)
-#include "g711u_test_data.h"
-#endif
-
+static uint8_t g_push_type = 0x00;
 
 extern app_t g_app;
 
@@ -108,6 +97,14 @@ static void signal_handler(int sig)
       g_app.b_push_thread_run = false;
       agora_iot_hang_up(g_app.iot_handle);
     }
+    if (g_dump_audio) {
+      fclose(g_dump_audio);
+      g_dump_audio = NULL;
+    }
+    if (g_dump_video) {
+      fclose(g_dump_video);
+      g_dump_video = NULL;
+    }
     break;
   default:
     printf("no handler, sig %d", sig);
@@ -120,12 +117,12 @@ static int send_video_frame(uint8_t *data, uint32_t len)
 
   // API: send video data
   ago_video_frame_t ago_frame = { 0 };
-  ago_frame.data_type = VIDEO_DATA_TYPE;
+  ago_frame.data_type = SEND_VIDEO_DATA_TYPE;
   ago_frame.is_key_frame = true;
   ago_frame.video_buffer = data;
   ago_frame.video_buffer_size = len;
 
-  rval = agora_iot_push_video_frame(g_app.iot_handle, &ago_frame);
+  rval = agora_iot_push_video_frame(g_app.iot_handle, &ago_frame, g_push_type);
   if (rval < 0) {
     printf("Failed to push video frame\n");
     return -1;
@@ -140,10 +137,10 @@ static int send_audio_frame(uint8_t *data, uint32_t len)
 
   // API: send audio data
   ago_audio_frame_t ago_frame = { 0 };
-  ago_frame.data_type = AUDIO_DATA_TYPE;
+  ago_frame.data_type = SEND_AUDIO_DATA_TYPE;
   ago_frame.audio_buffer = data;
   ago_frame.audio_buffer_size = len;
-  rval = agora_iot_push_audio_frame(g_app.iot_handle, &ago_frame);
+  rval = agora_iot_push_audio_frame(g_app.iot_handle, &ago_frame, g_push_type);
   if (rval < 0) {
     printf("Failed to push audio frame\n");
     return -1;
@@ -156,12 +153,12 @@ static void *video_send_thread(void *threadid)
 {
   int video_send_interval_ms = 1000 / CONFIG_SEND_FRAME_RATE;
   void *pacer = _pacer_create(video_send_interval_ms);
-  int num_frames = sizeof(test_video_frames) / sizeof(test_video_frames[0]);
+  int num_frames = sizeof(TEST_VIDEO_FRAMES) / sizeof(TEST_VIDEO_FRAMES[0]);
   int i = 0;
 
   while (g_app.b_push_thread_run) {
     i = (i % num_frames); // calculate frame indexS
-    send_video_frame(test_video_frames[i].data, test_video_frames[i].len);
+    send_video_frame(TEST_VIDEO_FRAMES[i].data, TEST_VIDEO_FRAMES[i].len);
     i++;
 
     // sleep and wait until time is up for next send
@@ -178,10 +175,10 @@ static void *audio_send_thread(void *threadid)
   uint32_t offset = 0;
 
   while (g_app.b_push_thread_run) {
-    send_audio_frame(AUDIO_TEST_DATA + offset, AUDIO_FRAME_LEN);
+    send_audio_frame((uint8_t *)AUDIO_DATA + offset, AUDIO_FRAME_LEN);
     offset += AUDIO_FRAME_LEN;
     /* wrap around to the beginning of audio test data */
-    if ((offset + AUDIO_FRAME_LEN) >= AUDIO_TEST_DATA_LEN) {
+    if ((offset + AUDIO_FRAME_LEN) >= sizeof(AUDIO_DATA)) {
       offset = 0;
     }
     // sleep and wait until time is up for next send
@@ -215,12 +212,15 @@ void iot_cb_call_request(const char *peer_name, const char *attach_msg)
   agora_iot_answer(g_app.iot_handle);
 }
 
-void iot_cb_start_push_frame(void)
+void iot_cb_start_push_frame(uint8_t push_type)
 {
   int rval;
-  printf("Ready to push frames\n");
+  printf("Ready to push frames type: %d\n", push_type);
 
   // Note: you may start video encoder here
+
+  // record push type
+  g_push_type |= push_type;
 
   if (g_app.b_push_thread_run) {
     printf("Already pushing frames!\n");
@@ -241,20 +241,25 @@ void iot_cb_start_push_frame(void)
   }
 }
 
-void iot_cb_stop_push_frame(void)
+void iot_cb_stop_push_frame(uint8_t push_type)
 {
-  printf("Stop pushing frames\n");
+  printf("Stop pushing frames type: %d\n", push_type);
 
   // Note: you may stop video encoder here
 
-  g_app.b_push_thread_run = false;
-  if (g_app.video_thread_id) {
-    pthread_join(g_app.video_thread_id, NULL);
-    g_app.video_thread_id = 0;
-  }
-  if (g_app.audio_thread_id) {
-    pthread_join(g_app.audio_thread_id, NULL);
-    g_app.audio_thread_id = 0;
+  // record push type
+  g_push_type &= ~push_type;
+
+  if (g_push_type == 0x00) {
+    g_app.b_push_thread_run = false;
+    if (g_app.video_thread_id) {
+      pthread_join(g_app.video_thread_id, NULL);
+      g_app.video_thread_id = 0;
+    }
+    if (g_app.audio_thread_id) {
+      pthread_join(g_app.audio_thread_id, NULL);
+      g_app.audio_thread_id = 0;
+    }
   }
 }
 
@@ -265,7 +270,12 @@ void iot_cb_call_hung_up(const char *peer_name)
   }
 
   printf("Get hangup from peer \"%s\"\n", peer_name);
-  g_app.b_push_thread_run = false;
+
+  g_push_type &= ~AGO_AV_PUSH_TYPE_MASK_RTC;
+
+  if (g_push_type == 0x00) {
+    g_app.b_push_thread_run = false;
+  }
 }
 
 void iot_cb_call_answered(const char *peer_name)
@@ -275,30 +285,32 @@ void iot_cb_call_answered(const char *peer_name)
 
 void iot_cb_receive_audio_frame(ago_audio_frame_t *frame)
 {
+#ifdef DUMP_RECEIVED
   //printf("Receive audio frame, size %d\n", frame->audio_buffer_size);
 
   // Note: you may send the frame to audio player here
   int ret = 0;
-  static FILE *fp = NULL;
-  if (!fp) {
-    fp = fopen("receive_audio.bin", "wb");
+  if (!g_dump_audio) {
+    g_dump_audio = fopen("receive_audio.bin", "wb");
   }
 
-  ret = fwrite(frame->audio_buffer, 1, frame->audio_buffer_size, fp);
+  ret = fwrite(frame->audio_buffer, 1, frame->audio_buffer_size, g_dump_audio);
+#endif
 }
 
 void iot_cb_receive_video_frame(ago_video_frame_t *frame)
 {
+#ifdef DUMP_RECEIVED
   //printf("Receive video frame, size %d\n", frame->video_buffer_size);
 
   // Note: you may send the frame to video decoder here
   int ret = 0;
-  static FILE *fp = NULL;
-  if (!fp) {
-    fp = fopen("receive_video.bin", "wb");
+  if (!g_dump_video) {
+    g_dump_video = fopen("receive_video.bin", "wb");
   }
 
-  ret = fwrite(frame->video_buffer, 1, frame->video_buffer_size, fp);
+  ret = fwrite(frame->video_buffer, 1, frame->video_buffer_size, g_dump_video);
+#endif
 }
 
 void iot_cb_key_frame_requested(void)
@@ -329,4 +341,19 @@ void iot_cb_call_custom_msg(const char *peer_name, const char *msg, int len)
 {
   printf("-- iot_cb_call_custom_msg from %s --\n", peer_name);
   printf("   message: %s --\n", msg);
+}
+
+// Just for test
+char g_rtm_peer_uid[64] = {0};
+void iot_cb_receive_rtm(const char *peer_uid, const void *msg, size_t msg_len) {
+  printf("Receive RTM from %s: %s\n", peer_uid, (char *)msg);
+  strncpy(g_rtm_peer_uid, peer_uid, sizeof(g_rtm_peer_uid) - 1);
+}
+
+void iot_cb_send_rtm_result(uint32_t msg_id, agora_rtm_err_e error_code) {
+  printf("Got RTM send result[%d]: %d\n", msg_id, error_code);
+}
+
+void iot_cb_connect_status(agora_iot_status_e status) {
+  printf("Agora server connection status change: %d\n", status);
 }

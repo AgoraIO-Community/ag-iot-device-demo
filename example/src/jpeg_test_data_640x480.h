@@ -5257,7 +5257,7 @@ typedef struct {
   uint32_t len;
 } video_frame_t;
 
-static video_frame_t test_video_frames[] = {
+static const video_frame_t TEST_VIDEO_FRAMES[] = {
   { (uint8_t *)jpg_pic_001, sizeof(jpg_pic_001) },
   { (uint8_t *)jpg_pic_002, sizeof(jpg_pic_002) },
 };

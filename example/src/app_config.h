@@ -1,10 +1,9 @@
 #pragma once
 
-#define CONFIG_LICENSE
-
-#define CONFIG_AGORA_APP_ID "4b31f***********************3037" // Please replace with your own APP ID
-#define CONFIG_CUSTOMER_KEY "8620f***********************7363"
-#define CONFIG_CUSTOMER_SECRET "492c1***********************e802"
+#define CONFIG_AGORA_APP_ID "4b3*************************037" // Please replace with your own APP ID
+#define CONFIG_CUSTOMER_KEY "8620f************************363"
+#define CONFIG_CUSTOMER_SECRET "492c******************7e802"
+#define CONFIG_LICENSE_PID "00F8D******************22646"
 
 #define CONFIG_USER_ID "6875*********3440" // Please replace with your own user ID
 #define CONFIG_DEVICE_ID "mydoorbell" // Please replace with your own device ID
@@ -16,7 +15,7 @@
 #define CONFIG_SLAVE_SERVER_URL "https://api.agora.io/agoralink/cn/api"
 
 // Found product key form device manager platform
-#define CONFIG_PRODUCT_KEY "EJIJ*******5lI4"
+#define CONFIG_PRODUCT_KEY "EJIJ******lI4"
 
 // Device cert file size max
 #define CERT_BUF_SIZE_MAX (1024 * 2)
@@ -44,35 +43,83 @@ o/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1bldZwgJcJmApzyMZFo6IQ6XU\r\n\
 rqXRfboQnoZsG4q5WTP468SQvvG5\r\n\
 -----END CERTIFICATE-----\r\n"
 
-#define SEND_VIDEO_DATA_TYPE (0) // 0 for H264 and 1 for JPEG, 2 for H265
-#define SEND_AUDIO_DATA_TYPE (0) // 0 for PCM, 1 for G711U
-#define USE_AUDIO_CODEC_TYPE (1) // 0 for OPUS, 1 for G722, 2 for G711U, 3 for OPUSFB, ignored if audio data type is not PCM
+/**
+ * @brief The data type of the video, refer to the definition of ago_av_data_type_e
+ *
+ */
+#define SEND_VIDEO_DATA_TYPE (1) // 1 for H264 and 2 for JPEG, 3 for H265
 
-#if (SEND_VIDEO_DATA_TYPE == 0)
+#if (SEND_VIDEO_DATA_TYPE == 1)
+#include "h264_test_data_352x288.h"
 #define CONFIG_SEND_H264_FRAMES
 #define CONFIG_SEND_FRAME_RATE (25)
-#elif (SEND_VIDEO_DATA_TYPE == 1)
+#elif (SEND_VIDEO_DATA_TYPE == 2)
+#include "jpeg_test_data_640x480.h"
 #define CONFIG_SEND_JPEG_FRAMES
 #define CONFIG_SEND_FRAME_RATE (5)
+#elif (SEND_VIDEO_DATA_TYPE == 3)
+#include "h265_test_data_360x640.h"
+#define CONFIG_SEND_H265_FRAMES
+#define CONFIG_SEND_FRAME_RATE (25)
 #else
 // to be added
 #endif
 
-#if (SEND_AUDIO_DATA_TYPE == 0)
-#define CONFIG_SEND_PCM_DATA
-#define CONFIG_PCM_FRAME_LEN (640) // reconfigure the value to match with the real audio capture hardware, like 2048
+/**
+ * Note: if the data type of the audio to send is not PCM, such as G711U,
+ * and the shoule be set INTERNAL_AUDIO_ENC_TYPE to be 0 (Disable).
+ */
+#define SEND_AUDIO_DATA_TYPE (10) // 10 for PCM, 13 for G711U
+
+/**
+ * @brief The internal audio encoder codec type
+ *
+ * The SDK supports encode the PCM data before sending.
+ * The codec type of encoder refer to the definition of ago_audio_codec_type_e
+ * 0 -> Disable encoder
+ * 1 -> OPUS
+ * 2 -> G722
+ * 3 -> G711A
+ * 4 -> G711U
+ *
+ * Note: The Agora OSS doesn't support OPUS yet.
+ */
+#define INTERNAL_AUDIO_ENC_TYPE (2)
+
+#if (INTERNAL_AUDIO_ENC_TYPE == 0)
+#define CONFIG_PCM_SAMPLE_RATE (16000)
 #define CONFIG_PCM_CHANNEL_NUM (1)
-#elif (SEND_AUDIO_DATA_TYPE == 1)
-#define CONFIG_SEND_G711U_DATA
-#define CONFIG_G711U_FRAME_LEN (160)
+#elif (INTERNAL_AUDIO_ENC_TYPE == 1)
+#define CONFIG_PCM_SAMPLE_RATE (16000)
+#define CONFIG_PCM_CHANNEL_NUM (1)
+#elif (INTERNAL_AUDIO_ENC_TYPE == 2)
+#define CONFIG_PCM_SAMPLE_RATE (16000)
+#define CONFIG_PCM_CHANNEL_NUM (1)
+#elif (INTERNAL_AUDIO_ENC_TYPE == 3)
+#define CONFIG_PCM_SAMPLE_RATE (8000)
+#define CONFIG_PCM_CHANNEL_NUM (1)
+#elif (INTERNAL_AUDIO_ENC_TYPE == 4)
+#define CONFIG_PCM_SAMPLE_RATE (8000)
+#define CONFIG_PCM_CHANNEL_NUM (1)
 #endif
 
-#if (USE_AUDIO_CODEC_TYPE == 0)
-#define CONFIG_USE_OPUS_CODEC
-#elif (USE_AUDIO_CODEC_TYPE == 1)
-#define CONFIG_USE_G722_CODEC
-#elif (USE_AUDIO_CODEC_TYPE == 2)
-#define CONFIG_USE_G711U_CODEC
-#elif (USE_AUDIO_CODEC_TYPE == 3)
-#define CONFIG_USE_OPUSFB_CODEC
+// TODO: If you changed the audio test data, you should also update the sample rate, the channel number matched your own data.
+#if (SEND_AUDIO_DATA_TYPE == 10)
+#include "pcm_test_data_16K_16bit_1ch_5s.h"
+#define AUDIO_DATA pcm_test_data
+#define AUDIO_FRAME_LEN (640)
+#define AUDIO_FRAME_DURATION_MS \
+        (AUDIO_FRAME_LEN * 1000 / CONFIG_PCM_SAMPLE_RATE / CONFIG_PCM_CHANNEL_NUM / sizeof(int16_t))
+#elif (SEND_AUDIO_DATA_TYPE == 13)
+#include "g711u_test_data.h"
+#define AUDIO_DATA g711u_test_data
+#define AUDIO_FRAME_LEN (160)
+#define AUDIO_FRAME_DURATION_MS (20)
 #endif
+
+// Device Firmware version
+#define CONFIG_FM_WIFI_VER "1.0.0"
+#define CONFIG_FM_MCU_VER "1.0.0"
+
+// Define this while needing dump the received audio/video data
+#undef DUMP_RECEIVED

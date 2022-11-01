@@ -36,8 +36,11 @@
 
 #include "cJSON.h"
 
+#include "app_config.h"
 #include "hello_doorbell_comm.h"
 #include "device_state.h"
+
+#include "warning_jpeg.h"
 
 /* Alarm type start */
 #define AGORA_ALARM_TYPE_VAD       0   // Voice detection
@@ -89,6 +92,7 @@ typedef enum {
 } sys_up_mode_e;
 
 sys_up_mode_e up_mode = SYS_UP_MODE_POWERON;
+device_handle_t g_dev_state = NULL;
 app_t g_app = {
   .iot_handle = NULL,
   .b_login_success = false,
@@ -107,6 +111,9 @@ typedef struct doorbell_dp_info {
   doorbell_dp_info_mode_e mode;
   agora_dp_info_t info;
 } doorbell_dp_info_t;
+
+// Just for test
+extern char g_rtm_peer_uid[64];
 
 static doorbell_dp_info_t g_mock_dp_state[] = {
   /* DP ID: 100 ~ 1** */
@@ -272,7 +279,7 @@ static int mock_save_device_state(device_handle_t dev_state)
     printf("Cannot create device_state.cfg !\n");
     return -1;
   }
-  char *state_contect = device_build_state_content(dev_state);
+  const char *state_contect = device_build_state_content(dev_state);
   if (NULL == state_contect) {
     printf("device_build_state_content failed !\n");
     fclose(state_file);
@@ -280,7 +287,7 @@ static int mock_save_device_state(device_handle_t dev_state)
   }
   fwrite(state_contect, 1, strlen(state_contect), state_file);
   fclose(state_file);
-  free(state_contect);
+  free((void *)state_contect);
   return 0;
 }
 
@@ -376,25 +383,15 @@ static int activate_device(device_handle_t dev_state)
   char *device_name = NULL;
   char *crt_buf = NULL;
   char *key_buf = NULL;
-  char *device_id = mock_get_device_id();
+  const char *device_id = mock_get_device_id();
 
   // 1. activate license
   char *cert = NULL;
-#ifdef CONFIG_LICENSE
   if (0 != agora_iot_license_activate(CONFIG_AGORA_APP_ID, CONFIG_CUSTOMER_KEY, CONFIG_CUSTOMER_SECRET,
-                                      CONFIG_PRODUCT_KEY, device_id, &cert)) {
+                                      CONFIG_PRODUCT_KEY, device_id, CONFIG_LICENSE_PID, &cert)) {
     printf("cannot activate agora license !\n");
     goto activate_err;
   }
-#else
-  cert = (char *)malloc(16);
-  if (NULL == cert) {
-    printf("cannot malloc buffer for license !\n");
-    goto activate_err;
-  }
-  memset(cert, 0, 16);
-  strncpy(cert, "None", 15);
-#endif
   device_set_item_string(dev_state, "license", cert);
 
   // 2. register DP service
@@ -426,8 +423,8 @@ static int activate_device(device_handle_t dev_state)
   device_set_item_string(dev_state, "client_id", device_info.client_id);
 
   // 3. get bind user info
-  char user_account[64] = { 0 };
-  int rval = agora_iot_query_user(CONFIG_MASTER_SERVER_URL, CONFIG_PRODUCT_KEY, device_id, user_account);
+  char user_account[AGORA_IOT_CLIENT_ID_MAX_LEN] = { 0 };
+  int rval = agora_iot_query_user(CONFIG_MASTER_SERVER_URL, CONFIG_PRODUCT_KEY, device_id, user_account, AGORA_IOT_CLIENT_ID_MAX_LEN);
   if (0 != rval) {
     printf("query device manager user failed\n");
     goto activate_err;
@@ -498,28 +495,28 @@ static agora_iot_handle_t mock_device_bringup(sys_up_mode_e mode)
   char *license = NULL;
 
   // 1. load device state config
-  device_handle_t dev_state = mock_load_devic_state();
+  g_dev_state = mock_load_devic_state();
 
   // 2. do network config process
-  if (NULL == dev_state) {
+  if (NULL == g_dev_state) {
     if (SYS_UP_MODE_WAKEUP == mode) {
       printf("device state config must be here is system was wakeup from low-poer mode");
       goto dev_bringup_err;
     }
-    dev_state = device_create_state();
-    if (NULL == dev_state) {
+    g_dev_state = device_create_state();
+    if (NULL == g_dev_state) {
       printf("cannot create device state items !\n");
       goto dev_bringup_err;
     }
-    if (0 != mock_network_config(dev_state)) {
+    if (0 != mock_network_config(g_dev_state)) {
       printf("config network failed!\n");
       goto dev_bringup_err;
     }
   }
 
   // 3. connect network (TODO: maybe need not do it on some system)
-  if (0 != device_get_item_string(dev_state, "ssid", &ssid) ||
-      0 != device_get_item_string(dev_state, "password", &psw)) {
+  if (0 != device_get_item_string(g_dev_state, "ssid", &ssid) ||
+      0 != device_get_item_string(g_dev_state, "password", &psw)) {
     printf("cannot found ssid and password !\n");
     goto dev_bringup_err;
   }
@@ -529,20 +526,20 @@ static agora_iot_handle_t mock_device_bringup(sys_up_mode_e mode)
   }
 
   // 4. activate the device
-  char user_account[64] = { 0 };
+  char user_account[AGORA_IOT_CLIENT_ID_MAX_LEN] = { 0 };
   if (SYS_UP_MODE_WAKEUP != mode) {
     // maybe nee to avtiate device if was not wakeup frome low-power mode
     if (SYS_UP_MODE_RESTORE == mode
-        || 0 != agora_iot_query_user(CONFIG_MASTER_SERVER_URL, CONFIG_PRODUCT_KEY, mock_get_device_id(), user_account)
+        || 0 != agora_iot_query_user(CONFIG_MASTER_SERVER_URL, CONFIG_PRODUCT_KEY, mock_get_device_id(), user_account, AGORA_IOT_CLIENT_ID_MAX_LEN)
         || 0 == strlen(user_account)
-        || 0 != device_get_item_string(dev_state, "license", &license)) {
+        || 0 != device_get_item_string(g_dev_state, "license", &license)) {
       // active device if cannot found license info or cannot found bind user info
-      if (0 != activate_device(dev_state)) {
+      if (0 != activate_device(g_dev_state)) {
         printf("cannot activate device !\n");
         goto dev_bringup_err;
       }
       // save state items to file or flash
-      mock_save_device_state(dev_state);
+      mock_save_device_state(g_dev_state);
     }
   }
   if (ssid) {
@@ -554,11 +551,12 @@ static agora_iot_handle_t mock_device_bringup(sys_up_mode_e mode)
   if (license) {
     free(license);
   }
-  return dev_state;
+  return g_dev_state;
 
 dev_bringup_err:
-  if (dev_state) {
-    device_destroy_state(dev_state);
+  if (g_dev_state) {
+    device_destroy_state(g_dev_state);
+    g_dev_state = NULL;
   }
   if (ssid) {
     free(ssid);
@@ -572,6 +570,38 @@ dev_bringup_err:
   return NULL;
 }
 
+static void iot_cb_ota_update(const agora_iot_device_fota_info_t *info)
+{
+  printf("-- %s --\n", __FUNCTION__);
+  printf("\ttype: %d, size: %u, versin: %s, url: %s\n",
+        info->type, info->file_size, info->file_ver, info->file_url);
+
+  int ret = -1;
+  agora_iot_device_fw_info_t fw_info = {
+    .fw_mcu_ver = "",
+    .fw_wifi_ver = ""
+  };
+  if (AGO_FW_WIFI == info->type) {
+    ret = device_set_item_string(g_dev_state, "fw_wifi_ver", info->file_ver);
+    if (0 == ret) {
+      printf("WIFI FW update successfully\n");
+      snprintf(fw_info.fw_wifi_ver, sizeof(fw_info.fw_wifi_ver), "%s", info->file_ver);
+      agora_iot_fw_info_update(g_app.iot_handle, &fw_info);
+    } else {
+      printf("WIFI FW update failure, ret=%d\n", ret);
+    }
+  } else if (AGO_FW_MCU == info->type) {
+    ret = device_set_item_string(g_dev_state, "fw_mcu_ver", info->file_ver);
+    if (0 == ret) {
+      printf("MCU FW update successfully\n");
+      snprintf(fw_info.fw_mcu_ver, sizeof(fw_info.fw_mcu_ver), "%s", info->file_ver);
+      agora_iot_fw_info_update(g_app.iot_handle, &fw_info);
+    } else {
+      printf("MCU FW update failure, ret=%d\n", ret);
+    }
+  }
+}
+
 static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
 {
   agora_iot_handle_t handle = NULL;
@@ -580,56 +610,59 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
   char *dev_key = NULL;
   char *license = NULL;
   char *client_id = NULL;
+  char *user_id = NULL;
   if (0 != device_get_item_string(dev_state, "dev_crt", &dev_crt)
       || 0 != device_get_item_string(dev_state, "dev_key", &dev_key)
       || 0 != device_get_item_string(dev_state, "domain", &domain)
-      || 0 != device_get_item_string(dev_state, "client_id", &client_id)) {
+      || 0 != device_get_item_string(dev_state, "client_id", &client_id)
+      || 0 != device_get_item_string(dev_state, "bind_user", &user_id)) {
     printf("cannot found dev_crt or dev_key or domain or client_id in device state items\n");
     goto agora_iot_err;
   }
-#ifdef CONFIG_LICENSE
+
   if (0 != device_get_item_string(dev_state, "license", &license)) {
     printf("cannot found license in device state items\n");
     goto agora_iot_err;
   }
-#endif
 
   agora_iot_config_t cfg = {
     .app_id             = CONFIG_AGORA_APP_ID,
     .product_key        = CONFIG_PRODUCT_KEY,
+
     .client_id          = client_id,
     .domain             = domain,
     .root_ca            = CONFIG_AWS_ROOT_CA,
     .client_crt         = dev_crt,
     .client_key         = dev_key,
+
+    .user_id            = user_id,
+
     .enable_rtc         = true,
     .certificate        = license,
     .enable_recv_audio  = true,
     .enable_recv_video  = false,
-
+    .area_code          = AGO_AREA_CODE_GLOB,
     .rtc_cb = {
       .cb_start_push_frame        = iot_cb_start_push_frame,
       .cb_stop_push_frame         = iot_cb_stop_push_frame,
       .cb_receive_audio_frame     = iot_cb_receive_audio_frame,
       .cb_receive_video_frame     = iot_cb_receive_video_frame,
-#ifdef CONFIG_SEND_H264_FRAMES
       .cb_target_bitrate_changed  = iot_cb_target_bitrate_changed,
-      .cb_key_frame_requested     = iot_cb_key_frame_requested,
-#endif
+      .cb_key_frame_requested     = iot_cb_key_frame_requested
     },
 
     .disable_rtc_log      = false,
+    .log_level            = AGORA_LOG_WARNING,
     .max_possible_bitrate = DEFAULT_MAX_BITRATE,
     .enable_audio_config  = true,
     .audio_config = {
-        .audio_codec_type = AUDIO_CODEC_TYPE,
-#if defined(CONFIG_SEND_PCM_DATA)
+        .audio_codec_type = INTERNAL_AUDIO_ENC_TYPE,
         .pcm_sample_rate  = CONFIG_PCM_SAMPLE_RATE,
-        .pcm_channel_num  = CONFIG_PCM_CHANNEL_NUM,
-#endif
+        .pcm_channel_num  = CONFIG_PCM_CHANNEL_NUM
     },
 
     .slave_server_url = CONFIG_SLAVE_SERVER_URL,
+    .call_mode        = CALL_MODE_MUTLI,
     .call_cb = {
       .cb_call_request        = iot_cb_call_request,
       .cb_call_answered       = iot_cb_call_answered,
@@ -637,6 +670,16 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
       .cb_call_local_timeout  = iot_cb_call_timeout,
       .cb_call_peer_timeout   = iot_cb_call_timeout,
     },
+    .ota_cb = {
+      .fw_updated             = iot_cb_ota_update
+    },
+    .rtm_cb = {
+      .on_receive_rtm         = iot_cb_receive_rtm,
+      .on_send_rtm_result     = iot_cb_send_rtm_result
+    },
+    .connect_cb = {
+      .on_connect_status      = iot_cb_connect_status
+    }
   };
 
   handle = agora_iot_init(&cfg);
@@ -645,7 +688,31 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
     goto agora_iot_err;
   }
 
+  agora_iot_device_fw_info_t fw_info;
+  char *wifi_version = NULL;
+  char *mcu_version = NULL;
+  if (0 == device_get_item_string(dev_state, "fw_wifi_ver", &wifi_version)) {
+    snprintf(fw_info.fw_wifi_ver, sizeof(fw_info.fw_wifi_ver), "%s", wifi_version);
+  } else {
+    snprintf(fw_info.fw_wifi_ver, sizeof(fw_info.fw_wifi_ver), "%s", CONFIG_FM_WIFI_VER);
+  }
+  if (0 == device_get_item_string(dev_state, "fw_mcu_ver", &mcu_version)) {
+    snprintf(fw_info.fw_mcu_ver, sizeof(fw_info.fw_mcu_ver), "%s", mcu_version);
+  } else {
+    snprintf(fw_info.fw_mcu_ver, sizeof(fw_info.fw_mcu_ver), "%s", CONFIG_FM_MCU_VER);
+  }
+  agora_iot_fw_info_update(handle, &fw_info);
+
 agora_iot_err:
+  if (wifi_version) {
+    free(wifi_version);
+  }
+  if (mcu_version) {
+    free(mcu_version);
+  }
+  if (client_id) {
+    free(client_id);
+  }
   if (domain) {
     free(domain);
   }
@@ -657,6 +724,9 @@ agora_iot_err:
   }
   if (license) {
     free(license);
+  }
+  if (user_id) {
+    free(user_id);
   }
   return handle;
 }
@@ -676,47 +746,74 @@ static char mock_wait_key_press(void)
   return ch;
 }
 
-/**
- * @brief Get the file information
- *
- * @param file_info Refer to agora_alarm_file_info_t. Caller needs to free the buffer of the file.
- * @return 0: success;
- *        <0: failure.
- */
-static int _get_file_info(agora_alarm_file_info_t *file_info)
+static unsigned long long start_alarm_record(agora_iot_handle_t handle)
 {
-#define DEFAULT_ALARM_IMAGE_FILE_PATH "../../test_data/warning-640x640.jpg"
-  char *file_name = strrchr(DEFAULT_ALARM_IMAGE_FILE_PATH, '/') + 1;
-  FILE *fd = fopen(DEFAULT_ALARM_IMAGE_FILE_PATH, "rb");
-  if (NULL == fd) {
-      printf("#### open file(%s) error.", DEFAULT_ALARM_IMAGE_FILE_PATH);
-      return -1;
+  unsigned long long video_record_id = 0;
+  int result = -1;
+
+  // Step 1: Start recording
+  struct timeval tv;
+  if (gettimeofday (&tv, NULL) < 0) {
+    printf("#### query system time failure\n");
+    return 0;
   }
-  /* get the size of the file and read the file into the buffer */
-  fseek(fd, 0, SEEK_END);
-  size_t file_size = ftell(fd);
-  fseek(fd, 0, SEEK_SET);
-  char *file_buf = (char *)calloc(file_size, sizeof(char));
-  if (!file_buf) {
-    printf("#### no memory for file buffer");
-    fclose(fd);
-    return -1;
-  } else {
-    fread(file_buf, sizeof(char), file_size, fd);
-    fclose(fd);
+  // begin time is necessary, and end time can be estimated to avoid record stop failure
+  unsigned long long begin_time = (unsigned long long)((uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+  result = agora_iot_cloud_record_start(handle, begin_time, begin_time + 60 * 1000,
+                                        SEND_AUDIO_DATA_TYPE, SEND_VIDEO_DATA_TYPE, &video_record_id);
+  if (0 != result) {
+    printf("#### start recording failure: %d\n", result);
+    return 0;
   }
 
-  file_info->name = file_name;
-  file_info->buf  = file_buf;
-  file_info->size = file_size;
-  return 0;
+  // Step 2: Push alarm image
+  agora_iot_file_info_t file_info = {
+    .name_suffix  = "jpeg",
+    .buf          = WARNING_JPEG,
+    .size         = sizeof(WARNING_JPEG)
+  };
+  char *image_id = NULL;
+  result = agora_iot_push_alarm_image(handle, &file_info, &image_id);
+  if (0 != result) {
+    printf("#### push alarm image failure: %d\n", result);
+    // image is not must be here, so need not to retur error
+  }
+
+  // Step 3: Publish alarm message, begin_time must be equal to or later than record start begin time
+  result = agora_iot_push_alarm_message(handle, begin_time, "dev_nickname", AG_ALARM_TYPE_VAD,
+                                        "This is a alarm test", image_id);
+  if (image_id) {
+    free(image_id);
+    image_id = NULL;
+  }
+  if (0 != result) {
+    printf("#### push alarm message failure: %d\n", result);
+    agora_iot_cloud_record_stop(handle, video_record_id, begin_time);
+    return 0;
+  }
+  return video_record_id;
+}
+
+static int stop_alarm_record(agora_iot_handle_t handle, unsigned long long video_record_id)
+{
+  if (video_record_id <= 0) {
+    printf("#### improper video record ID\n");
+    return -1;
+  }
+  struct timeval tv;
+  if (gettimeofday (&tv, NULL) < 0) {
+    printf("#### query system time failure\n");
+    return -1;
+  }
+  unsigned long long end_time = (unsigned long long)((uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+  return agora_iot_cloud_record_stop(handle, video_record_id, end_time);
 }
 
 int main(int argc, char *argv[])
 {
-  device_handle_t dev_state = NULL;
   agora_iot_handle_t handle = NULL;
-  struct timeval tv;
+  uint32_t rtm_msg_id = 0;
+  unsigned long long video_record_id = 0;
 
   if (argc == 2) {
     strncpy(g_device_id, argv[1], sizeof(g_device_id));
@@ -734,14 +831,13 @@ int main(int argc, char *argv[])
   up_mode = SYS_UP_MODE_POWERON;
 
   // Mock device bringup process, you must modify it on your board
-  dev_state = mock_device_bringup(up_mode);
-  if (NULL == dev_state) {
+  if (NULL == mock_device_bringup(up_mode)) {
     printf("mock_device_bringup failed.\n");
     goto EXIT;
   }
 
   // connect to agora iot service
-  handle = connect_agora_iot_service(dev_state);
+  handle = connect_agora_iot_service(g_dev_state);
   if (NULL == handle) {
     printf("connect_agora_iot_service failed.\n");
     goto EXIT;
@@ -755,12 +851,14 @@ int main(int argc, char *argv[])
 
   g_app.iot_handle = handle;
 
+  agora_iot_logfile_config(handle, 1024 * 4, 5);
+
   // infinite loop
   char *user_account = NULL;
   while (!g_app.b_exit) {
     switch (mock_wait_key_press()) {
     case 'c': // call
-      if (0 != device_get_item_string(dev_state, "bind_user", &user_account)) {
+      if (0 != device_get_item_string(g_dev_state, "bind_user", &user_account)) {
         printf("cannot found bind_user in device state items.\n");
         break;
       }
@@ -779,34 +877,11 @@ int main(int argc, char *argv[])
       agora_iot_hang_up(handle);
       break;
     case 'w': // warning alarm
-      if (0 != device_get_item_string(dev_state, "bind_user", &user_account)) {
-        printf("cannot found bind_user in device state items.\n");
-        break;
-      }
-
-      /* generate random alarm type, just for test */
-      gettimeofday(&tv, NULL);
-      agora_alarm_file_info_t file_info = {
-        /* If always use the default image, you should not rename the image */
-        .rename = false
-      };
-      if (0 != _get_file_info(&file_info)) {
-        printf("#### Can not access the default image file\n");
-        if (0 != agora_iot_alarm(handle, user_account, "This is a alarm test", (tv.tv_sec % 4), NULL)) {
-          printf("------- alarm %s failed.\n", user_account);
-        }
-      } else {
-        if (0 != agora_iot_alarm(handle, user_account, "This is a alarm test", (tv.tv_sec % 4), &file_info)) {
-          printf("------- alarm %s failed.\n", user_account);
-        }
-        free(file_info.buf);
-      }
-      if (user_account) {
-        free(user_account);
-      }
+      video_record_id = start_alarm_record(handle);
       break;
     case 's': // clear alarm and stop cloud recording
-      agora_iot_alarm_cancel(handle);
+      stop_alarm_record(handle, video_record_id);
+      video_record_id = 0;  // set to invalid ID to prevent repeated calls
       break;
     case 'p': // publish all of the registered data points
       agora_iot_dp_publish_all(handle);
@@ -816,6 +891,11 @@ int main(int argc, char *argv[])
       // mock to low power mode
       update_device_low_power(handle);
       break;
+    case 'm':  // RTM send test
+       if (g_rtm_peer_uid[0] != '\0') {
+         agora_iot_send_rtm(handle, g_rtm_peer_uid, rtm_msg_id++, "This is a test message for RTM....", 20);
+       }
+       break;
     default:
       break;
     }
@@ -823,10 +903,15 @@ int main(int argc, char *argv[])
 
 EXIT:
   if (handle) {
+    iot_cb_stop_push_frame(AGO_AV_PUSH_TYPE_MASK_RTC | AGO_AV_PUSH_TYPE_MASK_OSS);
+    stop_alarm_record(handle, video_record_id);
+    agora_iot_hang_up(handle);
     agora_iot_deinit(handle);
   }
-  if (dev_state) {
-    device_destroy_state(dev_state);
+  if (g_dev_state) {
+    // save state items to file or flash
+    mock_save_device_state(g_dev_state);
+    device_destroy_state(g_dev_state);
   }
 
   return 0;
