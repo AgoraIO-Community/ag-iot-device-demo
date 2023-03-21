@@ -107,14 +107,14 @@ rqXRfboQnoZsG4q5WTP468SQvvG5\r\n\
 #if (SEND_AUDIO_DATA_TYPE == 10)
 #include "pcm_test_data_16K_16bit_1ch_5s.h"
 #define AUDIO_DATA pcm_test_data
-#define AUDIO_FRAME_LEN (640)
-#define AUDIO_FRAME_DURATION_MS \
-        (AUDIO_FRAME_LEN * 1000 / CONFIG_PCM_SAMPLE_RATE / CONFIG_PCM_CHANNEL_NUM / sizeof(int16_t))
+#define AUDIO_FRAME_DURATION_MS (20)
+#define AUDIO_FRAME_LEN \
+        (AUDIO_FRAME_DURATION_MS * sizeof(int16_t) * CONFIG_PCM_CHANNEL_NUM * (CONFIG_PCM_SAMPLE_RATE / 1000))
 #elif (SEND_AUDIO_DATA_TYPE == 13)
 #include "g711u_test_data.h"
 #define AUDIO_DATA g711u_test_data
-#define AUDIO_FRAME_LEN (160)
 #define AUDIO_FRAME_DURATION_MS (20)
+#define AUDIO_FRAME_LEN (160)
 #endif
 
 // Device Firmware version

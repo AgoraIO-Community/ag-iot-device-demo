@@ -5253,11 +5253,11 @@ static const unsigned char jpg_pic_002[] = {
 };
 
 typedef struct {
-  uint8_t *data;
-  uint32_t len;
+  unsigned char *data;
+  unsigned len;
 } video_frame_t;
 
 static const video_frame_t TEST_VIDEO_FRAMES[] = {
-  { (uint8_t *)jpg_pic_001, sizeof(jpg_pic_001) },
-  { (uint8_t *)jpg_pic_002, sizeof(jpg_pic_002) },
+  { (unsigned char *)jpg_pic_001, sizeof(jpg_pic_001) },
+  { (unsigned char *)jpg_pic_002, sizeof(jpg_pic_002) },
 };
