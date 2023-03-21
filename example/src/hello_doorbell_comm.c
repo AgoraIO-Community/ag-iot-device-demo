@@ -121,6 +121,7 @@ static int send_video_frame(uint8_t *data, uint32_t len)
   ago_frame.is_key_frame = true;
   ago_frame.video_buffer = data;
   ago_frame.video_buffer_size = len;
+  ago_frame.fps = CONFIG_SEND_FRAME_RATE;
 
   rval = agora_iot_push_video_frame(g_app.iot_handle, &ago_frame, g_push_type);
   if (rval < 0) {

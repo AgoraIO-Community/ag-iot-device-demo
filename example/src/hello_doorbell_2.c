@@ -225,6 +225,17 @@ static void _cmd_callback(const agora_dp_info_t *info, void *args)
   printf("\n------and cann't find the DP");
 }
 
+static unsigned long long get_current_timestamp(void)
+{
+  struct timeval tv;
+  if (gettimeofday (&tv, NULL) < 0) {
+    printf("#### query system time failure\n");
+    return 0;
+  }
+  unsigned long long timestamp = (unsigned long long)((unsigned long long)tv.tv_sec * 1000 + tv.tv_usec / 1000);
+  return timestamp;
+}
+
 static char g_device_id[32] = { 0 };
 static const char *mock_get_device_id(void)
 {
@@ -387,12 +398,16 @@ static int activate_device(device_handle_t dev_state)
 
   // 1. activate license
   char *cert = NULL;
+#ifdef CONFIG_LICENSE_ACTIVATE_ENABLED
   if (0 != agora_iot_license_activate(CONFIG_AGORA_APP_ID, CONFIG_CUSTOMER_KEY, CONFIG_CUSTOMER_SECRET,
                                       CONFIG_PRODUCT_KEY, device_id, CONFIG_LICENSE_PID, &cert)) {
     printf("cannot activate agora license !\n");
     goto activate_err;
   }
   device_set_item_string(dev_state, "license", cert);
+#else
+  device_set_item_string(dev_state, "license", "");
+#endif
 
   // 2. register DP service
   if (0 != device_get_item_string(dev_state, "user_id", &user_id)) {
@@ -681,12 +696,14 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
       .on_connect_status      = iot_cb_connect_status
     }
   };
-
+  unsigned long long start_time = get_current_timestamp();
   handle = agora_iot_init(&cfg);
   if (NULL == handle) {
     printf("agora_iot_init failed\n");
     goto agora_iot_err;
   }
+  unsigned long long stop_time = get_current_timestamp();
+  printf("-- agora_iot_init use time: %llums\n", stop_time - start_time);
 
   agora_iot_device_fw_info_t fw_info;
   char *wifi_version = NULL;
@@ -746,30 +763,23 @@ static char mock_wait_key_press(void)
   return ch;
 }
 
-static unsigned long long start_alarm_record(agora_iot_handle_t handle)
+static int start_alarm_record(agora_iot_handle_t handle)
 {
-  unsigned long long video_record_id = 0;
   int result = -1;
 
   // Step 1: Start recording
-  struct timeval tv;
-  if (gettimeofday (&tv, NULL) < 0) {
-    printf("#### query system time failure\n");
-    return 0;
-  }
-  // begin time is necessary, and end time can be estimated to avoid record stop failure
-  unsigned long long begin_time = (unsigned long long)((uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
-  result = agora_iot_cloud_record_start(handle, begin_time, begin_time + 60 * 1000,
-                                        SEND_AUDIO_DATA_TYPE, SEND_VIDEO_DATA_TYPE, &video_record_id);
+  unsigned long long begin_time = get_current_timestamp();
+  result = agora_iot_cloud_record_start(handle, begin_time,
+                                        SEND_AUDIO_DATA_TYPE, SEND_VIDEO_DATA_TYPE);
   if (0 != result) {
     printf("#### start recording failure: %d\n", result);
-    return 0;
+    return -1;
   }
 
   // Step 2: Push alarm image
   agora_iot_file_info_t file_info = {
     .name_suffix  = "jpeg",
-    .buf          = WARNING_JPEG,
+    .buf          = (const char*)WARNING_JPEG,
     .size         = sizeof(WARNING_JPEG)
   };
   char *image_id = NULL;
@@ -788,32 +798,21 @@ static unsigned long long start_alarm_record(agora_iot_handle_t handle)
   }
   if (0 != result) {
     printf("#### push alarm message failure: %d\n", result);
-    agora_iot_cloud_record_stop(handle, video_record_id, begin_time);
-    return 0;
+    agora_iot_cloud_record_stop(handle, begin_time);
+    return -1;
   }
-  return video_record_id;
+  return 0;
 }
 
-static int stop_alarm_record(agora_iot_handle_t handle, unsigned long long video_record_id)
+static int stop_alarm_record(agora_iot_handle_t handle)
 {
-  if (video_record_id <= 0) {
-    printf("#### improper video record ID\n");
-    return -1;
-  }
-  struct timeval tv;
-  if (gettimeofday (&tv, NULL) < 0) {
-    printf("#### query system time failure\n");
-    return -1;
-  }
-  unsigned long long end_time = (unsigned long long)((uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000);
-  return agora_iot_cloud_record_stop(handle, video_record_id, end_time);
+  return agora_iot_cloud_record_stop(handle, get_current_timestamp());
 }
 
 int main(int argc, char *argv[])
 {
   agora_iot_handle_t handle = NULL;
   uint32_t rtm_msg_id = 0;
-  unsigned long long video_record_id = 0;
 
   if (argc == 2) {
     strncpy(g_device_id, argv[1], sizeof(g_device_id));
@@ -877,11 +876,10 @@ int main(int argc, char *argv[])
       agora_iot_hang_up(handle);
       break;
     case 'w': // warning alarm
-      video_record_id = start_alarm_record(handle);
+      start_alarm_record(handle);
       break;
     case 's': // clear alarm and stop cloud recording
-      stop_alarm_record(handle, video_record_id);
-      video_record_id = 0;  // set to invalid ID to prevent repeated calls
+      stop_alarm_record(handle);
       break;
     case 'p': // publish all of the registered data points
       agora_iot_dp_publish_all(handle);
@@ -904,7 +902,7 @@ int main(int argc, char *argv[])
 EXIT:
   if (handle) {
     iot_cb_stop_push_frame(AGO_AV_PUSH_TYPE_MASK_RTC | AGO_AV_PUSH_TYPE_MASK_OSS);
-    stop_alarm_record(handle, video_record_id);
+    stop_alarm_record(handle);
     agora_iot_hang_up(handle);
     agora_iot_deinit(handle);
   }
