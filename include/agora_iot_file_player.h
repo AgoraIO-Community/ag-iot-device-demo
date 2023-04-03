@@ -60,13 +60,13 @@ typedef struct agora_iot_file_player_callback
    * @brief Occurs when sdk is ready to send video/audio frame.
    * This callback notifies the sender to send video/audio frame.
    */
-  void (*cb_start_push_frame)(void);
+  void (*cb_start_push_frame)(const char *channel_name);
 
   /**
    * @brief Occurs when sdk stops sending video/audio frame.
    * This callback notifies the sender to stop sending video/audio frame.
    */
-  void (*cb_stop_push_frame)(void);
+  void (*cb_stop_push_frame)(const char *channel_name);
 } agora_iot_file_player_callback_t;
 
 /**

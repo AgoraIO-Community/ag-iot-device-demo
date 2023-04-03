@@ -40,6 +40,8 @@ extern "C" {
 #define AGO_AV_PUSH_TYPE_MASK_RTC  0x01  // Push AV data to the RTC channel
 #define AGO_AV_PUSH_TYPE_MASK_OSS  0x02  // Push AV data to the OSS (Object Storage Service)
 
+#define AG0_OTA_VERSION_LENGTH_MAX 50    // Max length of OTA version info
+
 /**
  * @brief The codec types which the SDK supports, include video and audio.
  * Send the frames with the below types.
@@ -68,7 +70,6 @@ typedef enum {
 
   /**
    * 10: PCM
-   * support SampleRate: 16000HZ; Bits: 16; Channel: 1
    */
   AGO_AUDIO_DATA_TYPE_PCM = 10,
 
@@ -258,9 +259,9 @@ typedef struct _agora_iot_audio_config {
 
 typedef struct agora_iot_device_fw_info {
   /* The version information of the WiFi firmware */
-  char fw_wifi_ver[16];
+  char fw_wifi_ver[AG0_OTA_VERSION_LENGTH_MAX];
   /* The version information of the MCU firmware */
-  char fw_mcu_ver[16];
+  char fw_mcu_ver[AG0_OTA_VERSION_LENGTH_MAX];
 } agora_iot_device_fw_info_t;
 
 typedef enum {
