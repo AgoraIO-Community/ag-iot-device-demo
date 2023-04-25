@@ -33,26 +33,9 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "agora_iot_api.h"
+
 typedef void* file_player_handle_t;
-
-typedef enum {
-  FILE_VIDEO_H264 = 0,
-  FILE_VIDEO_JPEG,
-  FILE_VIDEO_H265,
-} agora_iot_file_video_e;
-
-typedef struct {
-  uint8_t  *frame;
-  size_t   frame_len;
-  uint32_t codec; /* agora_iot_file_video_e */
-  bool     keyframe;
-  uint32_t frame_rate;
-} agora_iot_file_video_t;
-
-typedef struct {
-  uint8_t  *frame; /* must be PCM(16K 1channel 16bit, 20ms for one frame) */
-  size_t   frame_len; /* must be 20ms, 640byte */
-} agora_iot_file_audio_t;
 
 typedef struct agora_iot_file_player_callback
 {
@@ -90,17 +73,18 @@ void agora_iot_file_player_deinit(void);
 /**
  * @brief start file player
  * 
- * @param callback 
- * @param channel_name 
+ * @param callback      will be ccalled when need to start or stop push frame
+ * @param channel_name  the channel used for transfer data with receive node
+ * @param audio_config  audio codec info that you want to use for transfer
  * @return file_player_handle_t 
  */
 file_player_handle_t agora_iot_file_player_start(agora_iot_file_player_callback_t callback,
-                                                 const char *channel_name);
+                                                 const char *channel_name, agora_iot_audio_config_t *audio_config);
 
 /**
  * @brief stop file player
  * 
- * @param handle 
+ * @param handle  handle of a player object, from agora_iot_file_player_start
  * @return int 
  * - = 0: success
  * - < 0: failure
@@ -110,24 +94,24 @@ int agora_iot_file_player_stop(file_player_handle_t handle);
 /**
  * @brief push video frame when cb_start_push_frame trigger
  * 
- * @param handle 
- * @param frame 
+ * @param handle  handle of a player object, from agora_iot_file_player_start
+ * @param frame   video frame info
  * @return int 
  * - = 0: success
  * - < 0: failure
  */
-int agora_iot_file_player_push_video_frame(file_player_handle_t handle, agora_iot_file_video_t *frame);
+int agora_iot_file_player_push_video_frame(file_player_handle_t handle, ago_video_frame_t *frame);
 
 /**
  * @brief push audio frame when cb_start_push_frame trigger
  * 
- * @param handle 
- * @param frame 
+ * @param handle  handle of a player object, from agora_iot_file_player_start
+ * @param frame   audio frame info, must be 20ms length if type is PCM
  * @return int 
  * - = 0: success
  * - < 0: failure
  */
-int agora_iot_file_player_push_audio_frame(file_player_handle_t handle, agora_iot_file_audio_t *frame);
+int agora_iot_file_player_push_audio_frame(file_player_handle_t handle, ago_audio_frame_t *frame);
 
 #ifdef __cplusplus
 }

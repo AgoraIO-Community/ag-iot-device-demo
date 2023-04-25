@@ -182,6 +182,17 @@ typedef struct agora_iot_rtc_callback {
    * @param[in] target_bps:   Target value (bps) by which the bitrate should update
    */
   void (*cb_target_bitrate_changed)(uint32_t target_bps);
+
+  /**
+   * Occurs when peer mute or unmute audio.
+   * Only one user audio date will be receive if there is more than one peer user,
+   * Until talking user mute self, next unmute user will be new talking user.
+   *
+   * This callback is optional, it is extensional.
+   *
+   * @param[in] is_muted:   audio player mode change to mute or not
+   */
+  void (*cb_audio_muted_changed)(bool is_muted);
 } agora_iot_rtc_callback_t;
 
 /**
@@ -397,7 +408,8 @@ typedef struct agora_iot_config {
   bool disable_rtc_log; // disable low level rtc log
   char *p_log_dir;      // log save path, if it's enabled
   agora_iot_log_level_e log_level;  // log level, if it's enabled
-  uint32_t max_possible_bitrate;
+  uint32_t max_possible_bitrate;    // max target bitrate in cb_target_bitrate_changed
+  uint32_t min_possible_bitrate;    // min target bitrate in cb_target_bitrate_changed
   bool enable_audio_config;
   agora_iot_audio_config_t audio_config;
   uint32_t area_code;   // fill with ago_areas_type_e like as AGO_AREA_CODE_CN|AGO_AREA_CODE_JP
@@ -496,8 +508,8 @@ int agora_iot_fw_info_update(agora_iot_handle_t handle, const agora_iot_device_f
  *              it's controlled by APP. The sending speed allowed is limited to 60 messages per second (60qps)
  *
  * @param[in] handle   The reference when initialized
- * @param[in] peer_uid Peer RTM UID, come from "on_receive_rtm" usually
- * @param[in] msg_id   Identify the message sent
+ * @param[in] peer_id  Peer RTM ID, come from "on_receive_rtm" usually
+ * @param[in] msg_id   Identify the message sent, cannot be 0 attention please
  * @param[in] msg      Message to send
  * @param[in] msg_len  Length of the message(max size: 1024 bytes)
  *
@@ -505,7 +517,7 @@ int agora_iot_fw_info_update(agora_iot_handle_t handle, const agora_iot_device_f
  * - = 0: Success
  * - < 0: Failure
  */
-int agora_iot_send_rtm(agora_iot_handle_t handle, const char *peer_uid, uint32_t msg_id, const void *msg, size_t msg_len);
+int agora_iot_send_rtm(agora_iot_handle_t handle, const char *peer_id, uint32_t msg_id, const void *msg, size_t msg_len);
 
 /**
  * @brief Push the file to the OSS, now the SDK only supports the format with JPEG, JPG and PNG.

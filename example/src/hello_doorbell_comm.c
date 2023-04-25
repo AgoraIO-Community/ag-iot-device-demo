@@ -32,6 +32,7 @@
 // Demo-self header files, usually to define some values for reusing
 #include "hello_doorbell_comm.h"
 #include "device_state.h"
+#include "agora_iot_file_player.h"
 
 static FILE *g_dump_audio = NULL;
 static FILE *g_dump_video = NULL;
@@ -39,6 +40,8 @@ static FILE *g_dump_video = NULL;
 static uint8_t g_push_type = 0x00;
 
 extern app_t g_app;
+
+file_player_handle_t g_file_player = NULL;
 
 typedef struct {
   uint32_t interval_ms;
@@ -128,7 +131,11 @@ static int send_video_frame(uint8_t *data, uint32_t len)
     printf("Failed to push video frame\n");
     return -1;
   }
-
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  if (g_file_player) {
+    agora_iot_file_player_push_video_frame(g_file_player, &ago_frame);
+  }
+#endif
   return 0;
 }
 
@@ -146,7 +153,11 @@ static int send_audio_frame(uint8_t *data, uint32_t len)
     printf("Failed to push audio frame\n");
     return -1;
   }
-
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  if (g_file_player) {
+    agora_iot_file_player_push_audio_frame(g_file_player, &ago_frame);
+  }
+#endif
   return 0;
 }
 
@@ -228,6 +239,15 @@ void iot_cb_start_push_frame(uint8_t push_type)
     return;
   }
 
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  agora_iot_audio_config_t config = { 0 };
+  config.audio_codec_type = INTERNAL_AUDIO_ENC_TYPE;
+  config.pcm_sample_rate = CONFIG_PCM_SAMPLE_RATE;
+  config.pcm_channel_num = CONFIG_PCM_CHANNEL_NUM;
+  agora_iot_file_player_callback_t callback = { NULL };
+  g_file_player = agora_iot_file_player_start(callback, CONFIG_DEVICE_ID, &config);
+#endif
+
   g_app.b_push_thread_run = true;
   rval = pthread_create(&g_app.video_thread_id, NULL, video_send_thread, 0);
   if (rval < 0) {
@@ -262,6 +282,12 @@ void iot_cb_stop_push_frame(uint8_t push_type)
       g_app.audio_thread_id = 0;
     }
   }
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  if (g_file_player) {
+    agora_iot_file_player_stop(g_file_player);
+    g_file_player = NULL;
+  }
+#endif
 }
 
 void iot_cb_call_hung_up(const char *peer_name)
@@ -324,6 +350,11 @@ void iot_cb_target_bitrate_changed(uint32_t target_bitrate)
 {
   printf("Bandwidth change detected. Please adjust encoder bitrate to %u kbps\n", target_bitrate / 1000);
   // Note: you should update target bitrate setting in case of H264 encoder
+}
+
+void iot_cb_audio_muted_changed(bool is_muted)
+{
+  printf("Peer user is all mute local audio data: %d\n", is_muted);
 }
 
 void iot_cb_call_busy(const char *peer_name)
