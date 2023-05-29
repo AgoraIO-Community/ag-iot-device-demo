@@ -30,6 +30,7 @@
 #include "agora_iot_call.h"
 
 #define DEFAULT_MAX_BITRATE (2500000)
+#define DEFAULT_MIN_BITRATE (500000)
 
 typedef struct {
   agora_iot_handle_t iot_handle;
@@ -55,6 +56,7 @@ void iot_cb_receive_audio_frame(ago_audio_frame_t *frame);
 void iot_cb_receive_video_frame(ago_video_frame_t *frame);
 void iot_cb_key_frame_requested(void);
 void iot_cb_target_bitrate_changed(uint32_t target_bps);
+void iot_cb_audio_muted_changed(bool is_muted);
 
 void iot_cb_receive_rtm(const char *peer_uid, const void *msg, size_t msg_len);
 void iot_cb_send_rtm_result(uint32_t msg_id, agora_rtm_err_e error_code);

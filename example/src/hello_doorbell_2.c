@@ -28,11 +28,13 @@
 #include <malloc.h>
 #include <termio.h>
 #include <sys/time.h>
+#include <stdlib.h>
 
 #include "agora_iot_api.h"
 #include "agora_iot_call.h"
 #include "agora_iot_dp.h"
 #include "agora_iot_device_manager.h"
+#include "agora_iot_file_player.h"
 
 #include "cJSON.h"
 
@@ -73,15 +75,18 @@
 #define AGORA_DP_ID_STR_DEVICE_MAC                  503
 #define AGORA_DP_ID_STR_TIME_ZONE                   504
 
+#define AGORA_DP_ID_STR_SDCARD_INFO                 601
+
 #define AGORA_DP_ID_ENUM_STANDBY_STATE              1000
 /* Data Point ID end */
 
-#define STR_LEN 32
+#define STR_LEN 64
 static char g_str_firmware_ver[STR_LEN] = "ver.0.0.1";
 static char g_str_wifi_ssid[STR_LEN] = "AG_IOT_WIFI";
 static char g_str_device_ip[STR_LEN] = "192.168.100.100";
 static char g_str_device_mac[STR_LEN] = "01:23:45:AB:CD:EF";
 static char g_str_time_zone[STR_LEN] = "GTM+8";
+static char g_str_sdcard_info[STR_LEN] = "{\"total\":320000,\"use\":16000,\"state\":false}";
 
 typedef enum {
   SYS_UP_MODE_NONE = 0,
@@ -107,6 +112,7 @@ typedef enum doorbell_dp_info_mode {
   MODE_R, // read only
   MODE_RW // read & write
 } doorbell_dp_info_mode_e;
+
 typedef struct doorbell_dp_info {
   doorbell_dp_info_mode_e mode;
   agora_dp_info_t info;
@@ -139,6 +145,8 @@ static doorbell_dp_info_t g_mock_dp_state[] = {
   { .mode = MODE_R, .info.dp_id = AGORA_DP_ID_STR_DEVICE_MAC, .info.dp_type = AGORA_DP_TYPE_STR, .info.dp_value.dp_str = g_str_device_mac},
   { .mode = MODE_R, .info.dp_id = AGORA_DP_ID_STR_TIME_ZONE, .info.dp_type = AGORA_DP_TYPE_STR, .info.dp_value.dp_str = g_str_time_zone},
   { .mode = MODE_RW, .info.dp_id = AGORA_DP_ID_ENUM_STANDBY_STATE, .info.dp_type = AGORA_DP_TYPE_ENUM, .info.dp_value.dp_int = 2, },
+  /* DP ID: 600 ~  */
+  { .mode = MODE_RW, .info.dp_id = AGORA_DP_ID_STR_SDCARD_INFO, .info.dp_type = AGORA_DP_TYPE_STR, .info.dp_value.dp_str = g_str_sdcard_info},
 };
 static int g_mock_dp_state_total = sizeof(g_mock_dp_state) / sizeof(doorbell_dp_info_t);
 
@@ -306,51 +314,51 @@ static int parse_qrcode_content(device_handle_t dev_state, const char *content)
 {
   int ret = -1;
 
-  cJSON *root = cJSON_Parse(content);
+  ag_cJSON *root = ag_cJSON_Parse(content);
   if (NULL == root) {
     printf("#### cannot parse QRcode: %s\n", content);
     goto qrcode_parse_err;
   }
   // get ssid
-  cJSON *item = cJSON_GetObjectItemCaseSensitive(root, "s");
-  if (cJSON_GetStringValue(item)) {
-    device_set_item_string(dev_state, "ssid", cJSON_GetStringValue(item));
+  ag_cJSON *item = ag_cJSON_GetObjectItemCaseSensitive(root, "s");
+  if (ag_cJSON_GetStringValue(item)) {
+    device_set_item_string(dev_state, "ssid", ag_cJSON_GetStringValue(item));
   } else {
     printf("#### cannot found ssid in QRcode !\n");
   }
   item = NULL;
 
   // get pws
-  item = cJSON_GetObjectItemCaseSensitive(root, "p");
-  if (cJSON_GetStringValue(item)) {
-    device_set_item_string(dev_state, "password", cJSON_GetStringValue(item));
+  item = ag_cJSON_GetObjectItemCaseSensitive(root, "p");
+  if (ag_cJSON_GetStringValue(item)) {
+    device_set_item_string(dev_state, "password", ag_cJSON_GetStringValue(item));
   } else {
     printf("#### cannot found password in QRcode !\n");
   }
   item = NULL;
 
   // get product key
-  item = cJSON_GetObjectItemCaseSensitive(root, "k");
-  if (cJSON_GetStringValue(item)) {
-    device_set_item_string(dev_state, "product_key", cJSON_GetStringValue(item));
+  item = ag_cJSON_GetObjectItemCaseSensitive(root, "k");
+  if (ag_cJSON_GetStringValue(item)) {
+    device_set_item_string(dev_state, "product_key", ag_cJSON_GetStringValue(item));
   } else {
     printf("#### cannot found  product key in QRcode !\n");
   }
   item = NULL;
 
   // get user id
-  item = cJSON_GetObjectItemCaseSensitive(root, "u");
-  if (cJSON_GetStringValue(item)) {
-    device_set_item_string(dev_state, "user_id", cJSON_GetStringValue(item));
+  item = ag_cJSON_GetObjectItemCaseSensitive(root, "u");
+  if (ag_cJSON_GetStringValue(item)) {
+    device_set_item_string(dev_state, "user_id", ag_cJSON_GetStringValue(item));
   } else {
     printf("#### cannot found user id in QRcode !\n");
   }
   item = NULL;
 
   // get device name
-  item = cJSON_GetObjectItemCaseSensitive(root, "n");
-  if (cJSON_GetStringValue(item)) {
-    device_set_item_string(dev_state, "device_name", cJSON_GetStringValue(item));
+  item = ag_cJSON_GetObjectItemCaseSensitive(root, "n");
+  if (ag_cJSON_GetStringValue(item)) {
+    device_set_item_string(dev_state, "device_name", ag_cJSON_GetStringValue(item));
   } else {
     printf("#### cannot found device_name in QRcode, use the default: %s !\n", mock_get_device_id());
     device_set_item_string(dev_state, "device_name", mock_get_device_id());
@@ -361,7 +369,7 @@ static int parse_qrcode_content(device_handle_t dev_state, const char *content)
 
 qrcode_parse_err:
   if (root) {
-    cJSON_Delete(root);
+    ag_cJSON_Delete(root);
   }
   return ret;
 }
@@ -620,6 +628,9 @@ static void iot_cb_ota_update(const agora_iot_device_fota_info_t *info)
 static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
 {
   agora_iot_handle_t handle = NULL;
+  agora_iot_device_fw_info_t fw_info;
+  char *wifi_version = NULL;
+  char *mcu_version = NULL;
   char *domain = NULL;
   char *dev_crt = NULL;
   char *dev_key = NULL;
@@ -663,12 +674,14 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
       .cb_receive_audio_frame     = iot_cb_receive_audio_frame,
       .cb_receive_video_frame     = iot_cb_receive_video_frame,
       .cb_target_bitrate_changed  = iot_cb_target_bitrate_changed,
-      .cb_key_frame_requested     = iot_cb_key_frame_requested
+      .cb_key_frame_requested     = iot_cb_key_frame_requested,
+      .cb_audio_muted_changed     = iot_cb_audio_muted_changed
     },
 
     .disable_rtc_log      = false,
     .log_level            = AGORA_LOG_WARNING,
     .max_possible_bitrate = DEFAULT_MAX_BITRATE,
+    .min_possible_bitrate = DEFAULT_MIN_BITRATE,
     .enable_audio_config  = true,
     .audio_config = {
         .audio_codec_type = INTERNAL_AUDIO_ENC_TYPE,
@@ -705,9 +718,10 @@ static agora_iot_handle_t connect_agora_iot_service(device_handle_t dev_state)
   unsigned long long stop_time = get_current_timestamp();
   printf("-- agora_iot_init use time: %llums\n", stop_time - start_time);
 
-  agora_iot_device_fw_info_t fw_info;
-  char *wifi_version = NULL;
-  char *mcu_version = NULL;
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  agora_iot_file_player_init(CONFIG_SLAVE_SERVER_URL, CONFIG_AGORA_APP_ID);
+#endif
+
   if (0 == device_get_item_string(dev_state, "fw_wifi_ver", &wifi_version)) {
     snprintf(fw_info.fw_wifi_ver, sizeof(fw_info.fw_wifi_ver), "%s", wifi_version);
   } else {
@@ -750,6 +764,7 @@ agora_iot_err:
 
 static char mock_wait_key_press(void)
 {
+#ifndef CONFIG_MONKEY_TEST_ENABLED
   struct termios tms_old, tms_new;
 
   tcgetattr(0, &tms_old);
@@ -759,7 +774,10 @@ static char mock_wait_key_press(void)
   tcsetattr(0, TCSANOW, &tms_new);
   char ch = getchar();
   tcsetattr(0, TCSANOW, &tms_old);
-
+#else
+  char ch = rand() % 25 + 'a';
+  sleep(1);
+#endif
   return ch;
 }
 
@@ -812,7 +830,7 @@ static int stop_alarm_record(agora_iot_handle_t handle)
 int main(int argc, char *argv[])
 {
   agora_iot_handle_t handle = NULL;
-  uint32_t rtm_msg_id = 0;
+  uint32_t rtm_msg_id = 1;    // message ID cannot be 0 for RTM
 
   if (argc == 2) {
     strncpy(g_device_id, argv[1], sizeof(g_device_id));
@@ -854,6 +872,7 @@ int main(int argc, char *argv[])
 
   // infinite loop
   char *user_account = NULL;
+  srand((unsigned int)time(NULL));
   while (!g_app.b_exit) {
     switch (mock_wait_key_press()) {
     case 'c': // call
@@ -885,9 +904,11 @@ int main(int argc, char *argv[])
       agora_iot_dp_publish_all(handle);
       break;
     case 'q': // quit
+#ifndef CONFIG_MONKEY_TEST_ENABLED
       g_app.b_exit = true;
       // mock to low power mode
       update_device_low_power(handle);
+#endif
       break;
     case 'm':  // RTM send test
        if (g_rtm_peer_uid[0] != '\0') {
@@ -911,6 +932,10 @@ EXIT:
     mock_save_device_state(g_dev_state);
     device_destroy_state(g_dev_state);
   }
+
+#ifdef CONFIG_FILE_PLAYER_TEST_ENABLED
+  agora_iot_file_player_deinit();
+#endif
 
   return 0;
 }
