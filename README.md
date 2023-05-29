@@ -31,6 +31,16 @@
 否则将会出现激活失败的错误警告。
 
 Change List:
+v1.5.0.2 - 2023/05/29
+1、重构呼叫业务，提高弱网环境下呼叫出图成功率，解决MQTT通知信令累积导致的呼叫出图响应变慢问题
+2、修正严重弱网条件下，云存缓冲区一直增长，嵌入式设备上导致内存不足异常的问题
+注：必须搭配1.5.0版本以上APP端SDK使用，新版本不再兼容1.3.x及以前版本，混合使用将无法呼叫出图
+
+v1.3.7.0 - 2023/05/15
+1、解决弱网环境下长时间挂机偶现MQTT reconnect失败的问题
+2、RTM message payload长度扩大到4096字节
+3、agora_iot_file_player_callback_t::cb_stop_push_frame()接口增加触发条件，APP端回看停止时候触发该时间，通知应用层调用agora_iot_file_player_stop()接口停止指定channel的回看
+
 v1.3.6.0 - 2023/04/23
 1、修复云存stop后继续push有概率导致crash的问题
 2、增加对端audio mute操作通知事件，为减少内存消耗未开启混音功能，同时只有一个APP端可以讲话，mute后另一个APP可以讲话，相关接口：cb_audio_muted_changed()

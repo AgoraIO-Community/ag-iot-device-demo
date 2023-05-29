@@ -365,7 +365,12 @@ void iot_cb_call_busy(const char *peer_name)
 
 void iot_cb_call_timeout(const char *peer_name)
 {
-  printf("-- iot_cb_call_timeout from %s --\n", peer_name);
+  if (peer_name) {
+    printf("-- iot_cb_call_timeout from %s --\n", peer_name);
+  } else {
+    // There is no peer in this session any more
+    printf("-- iot_cb_call_timeout --\n");
+  }
   // TODO: you can set call state to no answer at here, and stop ring
 }
 
