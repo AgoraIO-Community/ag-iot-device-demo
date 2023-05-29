@@ -3,13 +3,13 @@
 //#define CONFIG_FILE_PLAYER_TEST_ENABLED
 //#define CONFIG_MONKEY_TEST_ENABLED
 
-#define CONFIG_AGORA_APP_ID "4b31fcfaca7c472cbb07637260953037" // Please replace with your own APP ID
-#define CONFIG_CUSTOMER_KEY "8620fd479140455388f99420fd307363"
-#define CONFIG_CUSTOMER_SECRET "492c18dcdb0a43c5bb10cc1cd217e802"
-#define CONFIG_LICENSE_PID "00F8D46F55D34580ADD8A4827F822646"
+#define CONFIG_AGORA_APP_ID "4b31f*****************953037" 	// Please replace with your own APP ID
+#define CONFIG_CUSTOMER_KEY "8620f*****************307363"	// Please replace with your custome key from agora Console website
+#define CONFIG_CUSTOMER_SECRET "492c*****************7e802"	// Please replace with your custome secret from agora Console website
+#define CONFIG_LICENSE_PID "00F8*****************822646"	// Please replace with your license PID from salesman
 
-#define CONFIG_USER_ID "687534074304573440" // Please replace with your own user ID
-#define CONFIG_DEVICE_ID "mydoorbell" // Please replace with your own device ID
+#define CONFIG_USER_ID "687******440" // Please replace with your own user ID，unused if input QRcode string
+#define CONFIG_DEVICE_ID "mydoorbell" // Please replace with your own device ID, unused if run demo commend with Device ID parameter
 
 // Agora Master Server URL
 #define CONFIG_MASTER_SERVER_URL "https://app.agoralink-iot-cn.sd-rtn.com"
@@ -18,7 +18,7 @@
 #define CONFIG_SLAVE_SERVER_URL "https://api.sd-rtn.com/agoralink/cn/api"
 
 // Found product key form device manager platform
-#define CONFIG_PRODUCT_KEY "EJIJEIm68gl5b5lI4"
+#define CONFIG_PRODUCT_KEY "EJ*************I4"
 
 // Device cert file size max
 #define CERT_BUF_SIZE_MAX (1024 * 2)
